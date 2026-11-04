@@ -202,7 +202,7 @@ LogScreenInfo(*) {
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 monitor_settings := Map(
-	"DESKTOP-ZB14OLE", {
+	"LAPTOP-UX3402VA", {
 		primary: {wallpaper: "C:\Windows\Web\Screen\img102.jpg", taskbar: True},
 		secondary: {wallpaper: "C:\Windows\Web\Wallpaper\ThemeC\img28.jpg", taskbar: False}
 	},
@@ -233,6 +233,11 @@ CheckMonitor(*) {
 	if newMonitor != currentMonitor {
 		currentMonitor := newMonitor
 		Log("[Monitor] " currentMonitor)
+
+		if (!monitor_settings.Has(A_ComputerName)) {
+			MsgBox("Settings not yet defined for this computer: " A_ComputerName "`nPlease update the monitor_settings map in System.ahk.",
+				"Monitor Settings Missing", "Iconx")
+		}
 
 		if (currentMonitor = "\\.\DISPLAY1") {
 			_HideShowTaskbar(monitor_settings[A_ComputerName].primary.taskbar)
@@ -352,7 +357,7 @@ FocusedProcess(hWinEventHook, event, hwnd, idObject, idChild, dwEventThread, dwm
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 StartNextcloudBackup(*) {
-	backupScript := "D:\Nextcloud\2.Code\ahk\Scripts\Run-Backup.cmd"
+	backupScript := A_ScriptDir "\Scripts\Run-Backup.cmd"
 
 	if !FileExist(backupScript) {
 		MsgBox("Backup script not found:`n" backupScript,
