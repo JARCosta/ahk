@@ -1,4 +1,3 @@
-
 @echo off
 setlocal EnableExtensions
 
@@ -13,8 +12,17 @@ echo         NEXTCLOUD RESTIC BACKUP
 echo ==========================================
 echo.
 
-REM Check required programs and repository
+REM Connect the two surviving shares cleanly
+echo Connecting to server shares...
+net use N: /delete >nul 2>&1
+net use P: /delete >nul 2>&1
 
+net use N: \\100.64.121.65\nextcloud-app /persistent:yes >nul 2>&1
+net use P: \\100.64.121.65\nextcloud-exports /persistent:yes >nul 2>&1
+
+timeout /t 3 /nobreak >nul
+
+REM Check required programs and repository
 if not exist "%RESTIC%" (
     echo ERROR: Restic executable not found.
     pause
@@ -34,41 +42,24 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM Check all four server shares
-
-echo Checking server shares...
-
+REM Check server shares are available
 if not exist "N:\." (
-    echo ERROR: N: Nextcloud data share unavailable.
-    pause
-    exit /b 1
-)
-
-if not exist "O:\." (
-    echo ERROR: O: Nextcloud config share unavailable.
+    echo ERROR: N: Server share unavailable.
     pause
     exit /b 1
 )
 
 if not exist "P:\." (
-    echo ERROR: P: Nextcloud exports share unavailable.
+    echo ERROR: P: Server share unavailable.
     pause
     exit /b 1
 )
 
-if not exist "Q:\." (
-    echo ERROR: Q: Nextcloud application share unavailable.
-    pause
-    exit /b 1
-)
-
-echo All four server shares are available.
+echo Server shares are available.
 echo.
 
 REM Check SSH connectivity
-
 echo Checking SSH connection...
-
 ssh -o BatchMode=yes "%SERVER%" "true"
 
 if errorlevel 1 (
@@ -80,46 +71,28 @@ if errorlevel 1 (
 echo SSH connection OK.
 echo.
 
-echo Before continuing, check:
-echo   - Tailscale is connected.
-echo   - Nextcloud desktop sync is Up to date.
-echo   - No large transfers are running.
-echo   - All four server shares are accessible.
-echo.
-
 choice /C YN /N /M "Ready to start the backup? (Y/N): "
-
 if errorlevel 2 exit /b 0
 
-REM Prepare Nextcloud
-
+REM Prepare Nextcloud (triggers database export)
 echo.
 echo ==========================================
-echo       PREPARING NEXTCLOUD SERVER
+echo         PREPARING NEXTCLOUD SERVER
 echo ==========================================
 echo.
 
 ssh -t "%SERVER%" "sudo /usr/local/sbin/nextcloud-restic-prepare"
-
 set "PREP_RC=%ERRORLEVEL%"
 
 if not "%PREP_RC%"=="0" (
     echo.
     echo ERROR: Server preparation failed.
-    echo Attempting maintenance-mode recovery...
-    echo.
-
     ssh -t "%SERVER%" "sudo /usr/local/sbin/nextcloud-restic-finish"
-
-    echo.
-    echo No Restic backup was started.
-    echo Check the server before trying again.
     pause
     exit /b 1
 )
 
-REM Run Restic backup
-
+REM Run Restic backup using the 2 clean drives
 echo.
 echo ==========================================
 echo          RUNNING RESTIC BACKUP
@@ -129,19 +102,14 @@ echo.
 "%RESTIC%" -r "%REPO%" backup ^
     "D:\Nextcloud" ^
     "N:\." ^
-    "O:\." ^
     "P:\." ^
-    "Q:\." ^
     --exclude="D:\Nextcloud\.sync_*" ^
     --exclude="D:\Nextcloud\.nextcloudsync.log" ^
-    --exclude="D:\Nextcloud\Desktop.ini" ^
-    --exclude="Q:\data" ^
-    --exclude="Q:\config"
+    --exclude="D:\Nextcloud\Desktop.ini"
 
 set "BACKUP_RC=%ERRORLEVEL%"
 
-REM Always attempt to finish the server workflow
-
+REM Restore Nextcloud service
 echo.
 echo ==========================================
 echo       RESTORING NEXTCLOUD SERVICE
@@ -149,11 +117,9 @@ echo ==========================================
 echo.
 
 ssh -t "%SERVER%" "sudo /usr/local/sbin/nextcloud-restic-finish"
-
 set "FINISH_RC=%ERRORLEVEL%"
 
-REM Report backup result
-
+REM Report results
 echo.
 echo ==========================================
 echo             BACKUP RESULTS
@@ -170,22 +136,8 @@ if "%FINISH_RC%"=="0" (
     echo NEXTCLOUD MAINTENANCE MODE: OFF
 ) else (
     echo WARNING: COULD NOT VERIFY MAINTENANCE MODE IS OFF.
-    echo Check the Ubuntu server immediately.
-    echo Run: sudo /usr/local/sbin/nextcloud-restic-finish
-)
-
-REM Show latest snapshot if backup succeeded
-
-if "%BACKUP_RC%"=="0" (
-    echo.
-    echo Latest Restic snapshot:
-    "%RESTIC%" -r "%REPO%" snapshots --latest 1
 )
 
 echo.
 pause
-
-if not "%BACKUP_RC%"=="0" exit /b 1
-if not "%FINISH_RC%"=="0" exit /b 2
-
 exit /b 0
